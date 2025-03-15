@@ -6,9 +6,17 @@ const nextConfig: NextConfig = {
   basePath: '/computation',
   images: {
     unoptimized: true, // Required for static export
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: '**',
+      },
+    ],
   },
   // No trailing slash for GitHub Pages
   trailingSlash: false,
+  // Help with static export
+  reactStrictMode: true,
 };
 
 export default nextConfig;
