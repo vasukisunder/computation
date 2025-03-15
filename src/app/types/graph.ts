@@ -1,6 +1,6 @@
 // Types for the technology evolution visualization
 
-export type NodeType = 'Person' | 'Invention' | 'Event' | 'Idea';
+export type NodeType = 'Person' | 'Invention' | 'Event';
 
 export interface Node {
   id: string;
@@ -8,8 +8,8 @@ export interface Node {
   type: NodeType;
   year?: number;
   description: string;
+  image?: string; // URL to the image
   // Fields we can add later:
-  // image?: string;
   // tags?: string[];
   // significance?: number; // For visual sizing
 }

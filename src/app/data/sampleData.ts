@@ -46,22 +46,22 @@ export const sampleData: Graph = {
     {
       source: 'ww2',
       target: 'turing',
-      description: 'Created urgent need for computing in cryptography'
+      description: 'created demand for'
     },
     {
       source: 'turing',
       target: 'vonneumann',
-      description: 'Turing\'s work influenced von Neumann\'s computer architecture'
+      description: 'influenced'
     },
     {
       source: 'vonneumann',
       target: 'transistor',
-      description: 'Von Neumann architecture became practical with transistor technology'
+      description: 'made practical by'
     },
     {
       source: 'transistor',
       target: 'microprocessor',
-      description: 'Transistor technology enabled the creation of microprocessors'
+      description: 'enabled'
     }
   ]
 }; 
