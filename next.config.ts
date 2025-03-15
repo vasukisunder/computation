@@ -1,9 +1,13 @@
 import type { NextConfig } from "next";
 
+// Determine if we're building for production GitHub Pages
+const isGitHubPages = process.env.GITHUB_ACTIONS === 'true' || process.env.NODE_ENV === 'production';
+
 const nextConfig: NextConfig = {
   output: 'export',
-  // GitHub Pages serves from a subdirectory with your repo name
-  basePath: '/computation',
+  devIndicators: false,
+  // Only set basePath for GitHub Pages production, not for local development
+  ...(isGitHubPages ? { basePath: '/computation' } : {}),
   images: {
     unoptimized: true, // Required for static export
     remotePatterns: [

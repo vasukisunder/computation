@@ -1,10 +1,10 @@
 'use client';
 
-import { useRef, useState, useCallback, useEffect } from 'react';
+import React, { useRef, useState, useCallback, useEffect } from 'react';
 import dynamic from 'next/dynamic';
-import * as d3 from 'd3';
-import { Graph, Node, Link } from '../types/graph';
 import Image from 'next/image';
+import * as d3 from 'd3';
+import { NODE_COLORS } from '@/app/utils/constants';
 
 // Dynamically import only the ForceGraph2D component
 const ForceGraph2D = dynamic(() => import('react-force-graph-2d'), {
@@ -12,21 +12,46 @@ const ForceGraph2D = dynamic(() => import('react-force-graph-2d'), {
   loading: () => <div className="absolute inset-0 flex items-center justify-center">Loading visualization...</div>
 });
 
-interface ForceGraphProps {
-  data: Graph;
+// Define proper types for our graph data
+interface GraphNode {
+  id: string;
+  type: string;
+  name: string;
+  description: string;
+  year?: number;
+  color?: string;
+  image?: string;
+  source?: string;
+  // Force graph specific properties
+  x?: number;
+  y?: number;
+  vx?: number;
+  vy?: number;
+  fx?: number | undefined;
+  fy?: number | undefined;
+  [key: string]: any; // Allow for any additional properties
 }
 
-const NODE_COLORS = {
-  Person: '#4a4e69',  // Dusty blue/purple
-  Invention: '#c9ada7',  // Muted pink/mauve
-  Event: '#9a8c98',  // Dusty lavender/gray
-};
+interface GraphLink {
+  source: string | GraphNode;
+  target: string | GraphNode;
+  type?: string;
+  description?: string;
+  [key: string]: any; // Allow for any additional properties
+}
+
+interface ForceGraphProps {
+  data: {
+    nodes: GraphNode[];
+    links: GraphLink[];
+  };
+}
 
 export default function ForceGraph({ data }: ForceGraphProps) {
-  // Use RefObject<any> to fix the type issue
+  // Use proper types for the graph ref
   const graphRef = useRef<any>(null);
-  const [selectedNode, setSelectedNode] = useState<Node | null>(null);
-  const [selectedLink, setSelectedLink] = useState<any | null>(null);
+  const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
+  const [selectedLink, setSelectedLink] = useState<GraphLink | null>(null);
   
   // Project info to display when nothing is selected
   const projectTitle = "History of Computation";
@@ -36,7 +61,7 @@ export default function ForceGraph({ data }: ForceGraphProps) {
   const graphData = useRef({
     nodes: data.nodes.map(node => ({
       ...node,
-      color: NODE_COLORS[node.type],
+      color: NODE_COLORS[node.type as keyof typeof NODE_COLORS],
     })),
     // Keep links as they come, react-force-graph will handle ID references internally
     links: data.links.map(link => ({
@@ -78,7 +103,7 @@ export default function ForceGraph({ data }: ForceGraphProps) {
   }, [configureForces]);
 
   // Event handlers with stable references
-  const handleNodeClick = useCallback((node: any) => {
+  const handleNodeClick = useCallback((node: any, event: MouseEvent) => {
     if (graphRef.current) {
       // Keep the simulation active
       configureForces(graphRef.current);
@@ -89,7 +114,7 @@ export default function ForceGraph({ data }: ForceGraphProps) {
     setSelectedLink(null);
   }, [configureForces]);
 
-  const handleLinkClick = useCallback((link: any) => {
+  const handleLinkClick = useCallback((link: any, event: MouseEvent) => {
     if (graphRef.current) {
       // Keep the simulation active
       configureForces(graphRef.current);
@@ -110,6 +135,14 @@ export default function ForceGraph({ data }: ForceGraphProps) {
       graphRef.current.d3ReheatSimulation();
     }
   }, [configureForces]);
+  
+  // Helper function to get a node's name safely
+  const getNodeName = (node: any) => {
+    if (typeof node === 'object' && node !== null) {
+      return node.name || 'Unknown';
+    }
+    return 'Unknown';
+  };
 
   return (
     <div className="absolute inset-0 bg-white">
@@ -239,23 +272,36 @@ export default function ForceGraph({ data }: ForceGraphProps) {
               
               {selectedNode.image && (
                 <div className="mb-3 w-full h-36 relative">
-                  <img 
+                  <Image 
                     src={selectedNode.image} 
                     alt={selectedNode.name}
-                    className="w-full h-full object-cover rounded-sm"
+                    fill
+                    style={{ objectFit: 'contain' }}
+                    unoptimized // Since we're doing a static export
                   />
                 </div>
               )}
               
-              <p className="text-xs text-gray-700">{selectedNode.description}</p>
+              <p className="text-sm text-gray-700 mb-4">
+                {selectedNode.description}
+              </p>
+              
+              {selectedNode.source && (
+                <a 
+                  href={selectedNode.source} 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="text-xs text-blue-500 hover:underline"
+                >
+                  Read more →
+                </a>
+              )}
             </>
           ) : selectedLink ? (
             // Link info content
             <>
               <div className="flex justify-between items-center mb-2">
-                <h3 className="text-md font-medium text-gray-800">
-                  {selectedLink.medium || `Relationship between ${selectedLink.source.name} and ${selectedLink.target.name}`}
-                </h3>
+                <h3 className="text-md font-medium text-gray-800">Connection</h3>
                 <button 
                   className="ml-1 text-xs text-gray-400 hover:text-gray-700"
                   onClick={closeInfoPanel}
@@ -264,18 +310,14 @@ export default function ForceGraph({ data }: ForceGraphProps) {
                 </button>
               </div>
               
-              <p className="text-xs text-gray-700">
-                {selectedLink.long ? (
-                  <span>{selectedLink.long}</span>
-                ) : (
-                  <>
-                    <span className="font-medium">{selectedLink.source.name}</span>
-                    {" "}
-                    <span className="text-gray-700">{selectedLink.short || selectedLink.description}</span>
-                    {" "}
-                    <span className="font-medium">{selectedLink.target.name}</span>
-                  </>
-                )}
+              <p className="text-sm text-gray-700 mb-4">
+                <>
+                  <span className="font-medium">{getNodeName(selectedLink.source)}</span>
+                  {" "}
+                  <span className="text-gray-700">{selectedLink.short || selectedLink.description}</span>
+                  {" "} 
+                  <span className="font-medium">{getNodeName(selectedLink.target)}</span>
+                </>
               </p>
             </>
           ) : (
