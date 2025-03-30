@@ -47,13 +47,28 @@ interface ForceGraphProps {
     nodes: GraphNode[];
     links: GraphLink[];
   };
+  onError?: (error: Error) => void;
 }
 
-export default function ForceGraph({ data }: ForceGraphProps) {
+export default function ForceGraph({ data, onError }: ForceGraphProps) {
   // Use proper types for the graph ref
   const graphRef = useRef<any>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [selectedLink, setSelectedLink] = useState<GraphLink | null>(null);
+  
+  // Add error handling
+  useEffect(() => {
+    try {
+      if (!data || !data.nodes || !data.links) {
+        throw new Error('Invalid data format');
+      }
+    } catch (err) {
+      onError?.(err as Error);
+    }
+  }, [data, onError]);
+  
+  // Add console logging to verify data
+  console.log('Received data:', data);
   
   // Project info to display when nothing is selected
   const projectTitle = "History of Computation";
@@ -63,37 +78,40 @@ export default function ForceGraph({ data }: ForceGraphProps) {
   const graphData = useRef({
     nodes: data.nodes.map(node => ({
       ...node,
-      color: NODE_COLORS[node.type as keyof typeof NODE_COLORS],
+      color: NODE_COLORS[node.type as keyof typeof NODE_COLORS] || '#999999',
     })),
-    // Keep links as they come, react-force-graph will handle ID references internally
-    links: data.links.map(link => ({
-      ...link,
-      // Don't transform source/target here - let the library handle it
-    }))
+    links: data.links
   }).current;
+  
+  // Add console logging to verify processed data
+  console.log('Processed graphData:', graphData);
 
   // Configure the force simulation when the graph is ready
   const configureForces = useCallback((fg: any) => {
     if (!fg) return;
     
-    // Set link distance based on node types
+    // Set link distance based on node types - reduced strength for more flexibility
     fg.d3Force('link')
-      .distance(() => 120)
-      .strength(0.8); // Stronger links so they don't break
+      .distance(() => 200)
+      .strength(0.2); // Reduced from 0.5 to make links more elastic
     
-    // Adjust repulsive forces between nodes
+    // Adjust repulsive forces between nodes - gentler repulsion
     fg.d3Force('charge')
-      .strength(-180)
-      .distanceMax(300);
+      .strength(-200) // Reduced from -400 to make nodes less repulsive
+      .distanceMax(400); // Slightly reduced from 500
     
-    // Add a center force to keep everything within view
+    // Weaker center force to allow more exploration
     fg.d3Force('center')
-      .strength(0.1);
+      .strength(0.02); // Reduced from 0.05
     
-    // Add a collision force to prevent overlap
-    fg.d3Force('collision', d3.forceCollide(20));
+    // Gentler collision force
+    fg.d3Force('collision', d3.forceCollide(30).strength(0.5)); // Added strength parameter
     
-    // Reheat the simulation to keep it active
+    // Weaker positioning forces
+    fg.d3Force('x', d3.forceX().strength(0.05)); // Reduced from 0.1
+    fg.d3Force('y', d3.forceY().strength(0.05)); // Reduced from 0.1
+    
+    // Reheat the simulation to keep it active but with less energy
     fg.d3ReheatSimulation();
   }, []);
 
@@ -156,9 +174,9 @@ export default function ForceGraph({ data }: ForceGraphProps) {
           backgroundColor="#ffffff"
           nodeLabel={(node: any) => `${node.name} (${node.year || 'unknown'})`}
           nodeColor={(node: any) => node.color}
-          nodeRelSize={8}
+          nodeRelSize={10}
           linkColor={() => "#9a8c98"}
-          linkWidth={2}
+          linkWidth={1.5}
           linkLabel={(link: any) => link.short || link.description}
           onNodeClick={handleNodeClick}
           onLinkClick={handleLinkClick}
@@ -168,8 +186,8 @@ export default function ForceGraph({ data }: ForceGraphProps) {
               graphRef.current.d3ReheatSimulation();
             }
           }}
-          cooldownTicks={Infinity} // Never stop the simulation completely
-          warmupTicks={100} // More ticks for better initial layout
+          cooldownTicks={Infinity}
+          warmupTicks={100} // Reduced from 200 for quicker initial settling
           onNodeDrag={(node: any) => {
             // Fix this node in place during drag
             node.fx = node.x;
@@ -186,7 +204,7 @@ export default function ForceGraph({ data }: ForceGraphProps) {
               graphRef.current.d3ReheatSimulation();
             }
           }}
-          linkDirectionalArrowLength={4}
+          linkDirectionalArrowLength={3}
           linkDirectionalArrowRelPos={1}
           nodeCanvasObject={(node: any, ctx, globalScale) => {
             // Draw the node

@@ -9,6 +9,7 @@ export interface Node {
   year?: number;
   description: string;
   image?: string; // URL to the image
+  source?: string; // URL to the source reference
   // Fields we can add later:
   // tags?: string[];
   // significance?: number; // For visual sizing
