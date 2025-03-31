@@ -3,16 +3,10 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
 import React, { useRef, useState, useCallback, useEffect } from 'react';
-import dynamic from 'next/dynamic';
+import { Network, Node, Edge } from 'vis-network';
+import { DataSet } from 'vis-data';
 import Image from 'next/image';
-import * as d3 from 'd3';
 import { NODE_COLORS } from '@/app/utils/constants';
-
-// Dynamically import only the ForceGraph2D component
-const ForceGraph2D = dynamic(() => import('react-force-graph-2d'), {
-  ssr: false,
-  loading: () => <div className="absolute inset-0 flex items-center justify-center">Loading visualization...</div>
-});
 
 // Define proper types for our graph data
 interface GraphNode {
@@ -24,22 +18,12 @@ interface GraphNode {
   color?: string;
   image?: string;
   source?: string;
-  // Force graph specific properties
-  x?: number;
-  y?: number;
-  vx?: number;
-  vy?: number;
-  fx?: number | undefined;
-  fy?: number | undefined;
-  [key: string]: any; // Allow for any additional properties
 }
 
 interface GraphLink {
-  source: string | GraphNode;
-  target: string | GraphNode;
-  type?: string;
+  source: string;
+  target: string;
   description?: string;
-  [key: string]: any; // Allow for any additional properties
 }
 
 interface ForceGraphProps {
@@ -51,11 +35,11 @@ interface ForceGraphProps {
 }
 
 export default function ForceGraph({ data, onError }: ForceGraphProps) {
-  // Use proper types for the graph ref
-  const graphRef = useRef<any>(null);
+  const networkRef = useRef<HTMLDivElement>(null);
+  const networkInstance = useRef<Network | null>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [selectedLink, setSelectedLink] = useState<GraphLink | null>(null);
-  
+
   // Add error handling
   useEffect(() => {
     try {
@@ -66,210 +50,234 @@ export default function ForceGraph({ data, onError }: ForceGraphProps) {
       onError?.(err as Error);
     }
   }, [data, onError]);
-  
-  // Add console logging to verify data
-  console.log('Received data:', data);
-  
+
   // Project info to display when nothing is selected
   const projectTitle = "History of Computation";
   const projectDescription = "This interactive visualization maps the evolution of computation through time, showing key inventions, people, and historical events that shaped our technological progress. Click on nodes or links to explore connections and learn more about each element.";
 
-  // Create a stable reference to data that won't change unexpectedly
-  const graphData = useRef({
-    nodes: data.nodes.map(node => ({
-      ...node,
-      color: NODE_COLORS[node.type as keyof typeof NODE_COLORS] || '#999999',
-    })),
-    links: data.links
-  }).current;
-  
-  // Add console logging to verify processed data
-  console.log('Processed graphData:', graphData);
-
-  // Configure the force simulation when the graph is ready
-  const configureForces = useCallback((fg: any) => {
-    if (!fg) return;
-    
-    // Set link distance based on node types - reduced strength for more flexibility
-    fg.d3Force('link')
-      .distance(() => 200)
-      .strength(0.2); // Reduced from 0.5 to make links more elastic
-    
-    // Adjust repulsive forces between nodes - gentler repulsion
-    fg.d3Force('charge')
-      .strength(-200) // Reduced from -400 to make nodes less repulsive
-      .distanceMax(400); // Slightly reduced from 500
-    
-    // Weaker center force to allow more exploration
-    fg.d3Force('center')
-      .strength(0.02); // Reduced from 0.05
-    
-    // Gentler collision force
-    fg.d3Force('collision', d3.forceCollide(30).strength(0.5)); // Added strength parameter
-    
-    // Weaker positioning forces
-    fg.d3Force('x', d3.forceX().strength(0.05)); // Reduced from 0.1
-    fg.d3Force('y', d3.forceY().strength(0.05)); // Reduced from 0.1
-    
-    // Reheat the simulation to keep it active but with less energy
-    fg.d3ReheatSimulation();
-  }, []);
-
-  // Initialize the graph when the component mounts
+  // Initialize the network
   useEffect(() => {
-    if (graphRef.current) {
-      configureForces(graphRef.current);
-    }
-  }, [configureForces]);
+    if (!networkRef.current) return;
 
-  // Event handlers with stable references
-  const handleNodeClick = useCallback((node: any, event: MouseEvent) => {
-    if (graphRef.current) {
-      // Keep the simulation active
-      configureForces(graphRef.current);
-      graphRef.current.d3ReheatSimulation();
-    }
-    
-    setSelectedNode(node);
-    setSelectedLink(null);
-  }, [configureForces]);
+    // Create nodes dataset
+    const nodes = new DataSet<Node>(
+      data.nodes.map(node => ({
+        id: node.id,
+        label: node.name,
+        color: {
+          background: NODE_COLORS[node.type as keyof typeof NODE_COLORS] || '#999999',
+          border: '#ffffff'
+        },
+        shape: 'dot',
+        size: 16,
+        font: {
+          size: 14,
+          face: 'Sans-Serif'
+        },
+        shadow: true,
+        title: `${node.name} (${node.year || 'unknown'})`
+      }))
+    );
 
-  const handleLinkClick = useCallback((link: any, event: MouseEvent) => {
-    if (graphRef.current) {
-      // Keep the simulation active
-      configureForces(graphRef.current);
-      graphRef.current.d3ReheatSimulation();
-    }
-    
-    setSelectedLink(link);
-    setSelectedNode(null);
-  }, [configureForces]);
+    // Create edges dataset with elastic lines
+    const edges = new DataSet<Edge>(
+      data.links.map(link => ({
+        from: link.source,
+        to: link.target,
+        smooth: {
+          enabled: true,
+          type: 'dynamic',
+          roundness: 0.5,
+          forceDirection: 'none'
+        },
+        color: {
+          color: '#9a8c98',
+          highlight: '#7a6c78',
+          opacity: 0.8
+        },
+        width: 2,
+        title: link.description,
+        arrows: 'to',
+        physics: true,
+        length: undefined // Allow edges to stretch freely
+      }))
+    );
 
-  const closeInfoPanel = useCallback(() => {
-    setSelectedNode(null);
-    setSelectedLink(null);
-    
-    if (graphRef.current) {
-      // Reheat when closing the panel
-      configureForces(graphRef.current);
-      graphRef.current.d3ReheatSimulation();
-    }
-  }, [configureForces]);
-  
-  // Helper function to get a node's name safely
-  const getNodeName = (node: any) => {
-    if (typeof node === 'object' && node !== null) {
-      return node.name || 'Unknown';
-    }
-    return 'Unknown';
-  };
+    // Network configuration
+    const options = {
+      nodes: {
+        shape: 'dot',
+        size: 16,
+        font: {
+          size: 14,
+          face: 'Sans-Serif'
+        },
+        borderWidth: 2,
+        shadow: true
+      },
+      edges: {
+        smooth: {
+          enabled: true,
+          type: 'dynamic',
+          roundness: 0.5,
+          forceDirection: 'none'
+        },
+        color: {
+          color: '#9a8c98',
+          highlight: '#7a6c78',
+          opacity: 0.8
+        },
+        width: 2,
+        arrows: 'to',
+        physics: true,
+        length: undefined,
+        scaling: {
+          min: 1,
+          max: 3,
+          label: true
+        }
+      },
+      physics: {
+        enabled: true,
+        solver: 'forceAtlas2Based',
+        forceAtlas2Based: {
+          gravitationalConstant: -1000,
+          centralGravity: 0.1,
+          springLength: 100,
+          springConstant: 0.08,
+          damping: 0.4,
+          avoidOverlap: 0.3
+        },
+        stabilization: {
+          enabled: true,
+          iterations: 1000,
+          updateInterval: 50
+        },
+        minVelocity: 0.1,
+        maxVelocity: 50,
+        timestep: 0.3,
+        adaptiveTimestep: true
+      },
+      interaction: {
+        hover: true,
+        tooltipDelay: 200,
+        dragNodes: true,
+        dragView: true,
+        zoomView: true,
+        selectable: true,
+        selectConnectedEdges: false,
+        keyboard: false,
+        multiselect: false,
+        navigationButtons: false,
+        zoomSpeed: 0.8
+      }
+    };
+
+    // Create the network
+    const network = new Network(networkRef.current, { nodes, edges }, options);
+    networkInstance.current = network;
+
+    // Set initial zoom after network stabilization
+    network.once('stabilizationIterationsDone', () => {
+      network.fit({
+        animation: false
+      });
+      
+      // Get current scale and zoom in closer
+      const currentScale = network.getScale();
+      network.moveTo({
+        scale: currentScale * 2,
+        animation: {
+          duration: 0,
+          easingFunction: 'linear'
+        }
+      });
+    });
+
+    // Event handlers
+    network.on('click', (params) => {
+      if (params.nodes.length > 0) {
+        const nodeId = params.nodes[0];
+        const node = data.nodes.find(n => n.id === nodeId);
+        if (node) {
+          setSelectedNode(node);
+          setSelectedLink(null);
+        }
+      } else if (params.edges.length > 0) {
+        const edgeId = params.edges[0];
+        const edge = data.links.find(e => `${e.source}-${e.target}` === edgeId);
+        if (edge) {
+          setSelectedLink(edge);
+          setSelectedNode(null);
+        }
+      }
+    });
+
+    // Add event handlers for more dramatic elastic behavior
+    network.on('dragStart', () => {
+      network.setOptions({
+        physics: {
+          ...options.physics,
+          forceAtlas2Based: {
+            ...options.physics.forceAtlas2Based,
+            springLength: 30,
+            springConstant: 0.04,
+            damping: 0.2
+          }
+        }
+      });
+    });
+
+    network.on('dragging', (params: any) => {
+      if (params.nodes && params.nodes.length > 0) {
+        const dragDistance = Math.sqrt(
+          Math.pow(params.pointer.canvas.x, 2) + 
+          Math.pow(params.pointer.canvas.y, 2)
+        );
+        network.setOptions({
+          physics: {
+            ...options.physics,
+            forceAtlas2Based: {
+              ...options.physics.forceAtlas2Based,
+              springLength: Math.min(30 + dragDistance / 4, 200),
+              springConstant: 0.04
+            }
+          }
+        });
+      }
+    });
+
+    network.on('dragEnd', () => {
+      network.setOptions({
+        physics: {
+          ...options.physics,
+          forceAtlas2Based: {
+            ...options.physics.forceAtlas2Based,
+            springLength: 100,
+            springConstant: 0.08,
+            damping: 0.4
+          }
+        }
+      });
+    });
+
+    // Add console logging to debug
+    console.log('Nodes:', nodes.get());
+    console.log('Edges:', edges.get());
+    console.log('Network:', network);
+
+    // Cleanup
+    return () => {
+      network.destroy();
+      networkInstance.current = null;
+    };
+  }, [data]);
 
   return (
     <div className="absolute inset-0 bg-white">
-      {/* Graph container - adjust to account for always-visible panel */}
+      {/* Graph container */}
       <div className="absolute inset-0 ml-[300px]">
-        <ForceGraph2D
-          ref={graphRef}
-          graphData={graphData}
-          backgroundColor="#ffffff"
-          nodeLabel={(node: any) => `${node.name} (${node.year || 'unknown'})`}
-          nodeColor={(node: any) => node.color}
-          nodeRelSize={10}
-          linkColor={() => "#9a8c98"}
-          linkWidth={1.5}
-          linkLabel={(link: any) => link.short || link.description}
-          onNodeClick={handleNodeClick}
-          onLinkClick={handleLinkClick}
-          onEngineStop={() => {
-            // Keep the simulation active
-            if (graphRef.current) {
-              graphRef.current.d3ReheatSimulation();
-            }
-          }}
-          cooldownTicks={Infinity}
-          warmupTicks={100} // Reduced from 200 for quicker initial settling
-          onNodeDrag={(node: any) => {
-            // Fix this node in place during drag
-            node.fx = node.x;
-            node.fy = node.y;
-          }}
-          onNodeDragEnd={(node: any) => {
-            // Release the fixed position when drag ends
-            node.fx = null;
-            node.fy = null;
-            
-            // Reheat the simulation
-            if (graphRef.current) {
-              configureForces(graphRef.current);
-              graphRef.current.d3ReheatSimulation();
-            }
-          }}
-          linkDirectionalArrowLength={3}
-          linkDirectionalArrowRelPos={1}
-          nodeCanvasObject={(node: any, ctx, globalScale) => {
-            // Draw the node
-            const size = 8;
-            ctx.beginPath();
-            ctx.arc(node.x, node.y, size, 0, 2 * Math.PI);
-            ctx.fillStyle = node.color;
-            ctx.fill();
-            // No stroke/outline
-            
-            // Draw node labels for all nodes
-            const label = node.name;
-            const fontSize = 12/globalScale;
-            ctx.font = `${fontSize}px Sans-Serif`;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            
-            // Add background for better readability
-            const textWidth = ctx.measureText(label).width;
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-            ctx.fillRect(
-              node.x - textWidth/2 - 2,
-              node.y + size + 2,
-              textWidth + 4,
-              fontSize + 4
-            );
-            
-            // Draw the actual text
-            ctx.fillStyle = '#333333';
-            ctx.fillText(label, node.x, node.y + size + fontSize/2 + 4);
-          }}
-          linkCanvasObjectMode={() => 'after'}  
-          linkCanvasObject={(link: any, ctx, globalScale) => {
-            // Calculate the position for the link label
-            const start = link.source;
-            const end = link.target;
-            const textPos = Object.assign({
-              x: start.x + (end.x - start.x) * 0.5,
-              y: start.y + (end.y - start.y) * 0.5
-            });
-            
-            // Draw link labels with background
-            const label = link.short || link.description;
-            if (!label) return;
-            
-            const fontSize = 10/globalScale;
-            ctx.font = `${fontSize}px Sans-Serif`;
-            
-            // Add background for better readability
-            const textWidth = ctx.measureText(label).width;
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-            ctx.fillRect(
-              textPos.x - textWidth/2 - 2,
-              textPos.y - fontSize/2 - 2,
-              textWidth + 4,
-              fontSize + 4
-            );
-            
-            // Draw the actual text
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillStyle = '#333333';
-            ctx.fillText(label, textPos.x, textPos.y);
-          }}
-        />
+        <div ref={networkRef} className="w-full h-full" />
       </div>
 
       {/* Always visible information panel on the left */}
@@ -282,7 +290,7 @@ export default function ForceGraph({ data, onError }: ForceGraphProps) {
                 <h3 className="text-md font-medium text-gray-800">{selectedNode.name}</h3>
                 <button 
                   className="ml-1 text-xs text-gray-400 hover:text-gray-700"
-                  onClick={closeInfoPanel}
+                  onClick={() => setSelectedNode(null)}
                 >
                   ✕
                 </button>
@@ -297,7 +305,7 @@ export default function ForceGraph({ data, onError }: ForceGraphProps) {
                     alt={selectedNode.name}
                     fill
                     style={{ objectFit: 'contain' }}
-                    unoptimized // Since we're doing a static export
+                    unoptimized
                   />
                 </div>
               )}
@@ -324,7 +332,7 @@ export default function ForceGraph({ data, onError }: ForceGraphProps) {
                 <h3 className="text-md font-medium text-gray-800">Connection</h3>
                 <button 
                   className="ml-1 text-xs text-gray-400 hover:text-gray-700"
-                  onClick={closeInfoPanel}
+                  onClick={() => setSelectedLink(null)}
                 >
                   ✕
                 </button>
@@ -332,11 +340,15 @@ export default function ForceGraph({ data, onError }: ForceGraphProps) {
               
               <p className="text-sm text-gray-700 mb-4">
                 <>
-                  <span className="font-medium">{getNodeName(selectedLink.source)}</span>
+                  <span className="font-medium">
+                    {data.nodes.find(n => n.id === selectedLink.source)?.name || 'Unknown'}
+                  </span>
                   {" "}
-                  <span className="text-gray-700">{selectedLink.short || selectedLink.description}</span>
+                  <span className="text-gray-700">{selectedLink.description}</span>
                   {" "} 
-                  <span className="font-medium">{getNodeName(selectedLink.target)}</span>
+                  <span className="font-medium">
+                    {data.nodes.find(n => n.id === selectedLink.target)?.name || 'Unknown'}
+                  </span>
                 </>
               </p>
             </>
@@ -370,7 +382,6 @@ export default function ForceGraph({ data, onError }: ForceGraphProps) {
                 <p>Click on a link to view relationships</p>
                 <p>Drag nodes to rearrange the layout</p>
                 <p>Scroll to zoom in and out</p>
-                  
               </div>
             </>
           )}
