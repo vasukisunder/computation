@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { motion, useScroll } from 'framer-motion';
+import { motion, useScroll, useTransform } from 'framer-motion';
+import { NODE_COLORS } from '@/app/utils/constants';
 
 interface ScrollyIntroProps {
   onComplete: () => void;
